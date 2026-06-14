@@ -2,8 +2,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Home, PieChart as PieChartIcon, List, Settings, Plus, 
   Upload, Download, Trash2, AlertCircle, CheckCircle2, Search, X, 
-  ChevronRight, ChevronLeft, Wallet, Sparkles, Bot, Receipt, 
-  ArrowDownRight, ArrowUpRight, Cloud, Database, Sun, Moon, PiggyBank, RefreshCw, Save
+  ChevronRight, ChevronLeft, Wallet, Receipt, 
+  ArrowDownRight, ArrowUpRight, Cloud, Database, Sun, Moon, PiggyBank, RefreshCw, Save,
+  IndianRupee, User
 } from 'lucide-react';
 
 // ==========================================
@@ -147,14 +148,10 @@ export default function App() {
       const result = await response.json();
       if (result && result.status === 'success' && Array.isArray(result.data)) {
         setTransactions(result.data);
-        localStorage.setItem('fintrack_local_tx', JSON.stringify(result.data)); // Save locally to prevent blank screen next time
-        if(result.data.length > 0) {
-          showToast("Data Auto-Restored from Sheet!", "success");
-        }
+        localStorage.setItem('fintrack_local_tx', JSON.stringify(result.data));
       }
     } catch (err) {
       console.error("Auto-fetch error", err);
-      showToast("Sync failed. Check Sheet URL.", "error");
     } finally {
       setIsSyncing(false);
     }
@@ -163,7 +160,7 @@ export default function App() {
   // AUTO-RESTORE Data on App Start
   useEffect(() => {
     const initApp = async () => {
-      // 1. Fast Load from Local Storage First (taki 0 na dikhe)
+      // 1. Fast Load from Local Storage
       const savedTx = localStorage.getItem('fintrack_local_tx');
       if (savedTx) {
         try { setTransactions(JSON.parse(savedTx)); } catch(e){}
@@ -244,7 +241,6 @@ export default function App() {
       const updated = prev.filter(t => t.id !== txId);
       updated.push(payload);
       finalData = updated.sort((a, b) => new Date(b.date) - new Date(a.date));
-      // Save locally instantly
       localStorage.setItem('fintrack_local_tx', JSON.stringify(finalData));
       return finalData;
     });
@@ -299,8 +295,6 @@ export default function App() {
     setSheetUrl(url);
     localStorage.setItem('fintrack_sheet_url', url);
     showToast("Link Saved! Fetching data...");
-    
-    // Yahan par humne naya logic dala hai jo link save hote hi automatically data le aayega
     await syncFromSheet(url); 
   };
 
@@ -410,27 +404,28 @@ export default function App() {
 
   if (isAppLoading) {
     return (
-      <div className="min-h-screen bg-[#05080f] flex flex-col items-center justify-center font-bold gap-3 text-emerald-500">
+      <div className="min-h-screen bg-[#05080f] flex flex-col items-center justify-center font-bold gap-3 text-amber-500">
         <RefreshCw className="animate-spin" size={32} />
-        <p>Starting Meri Kamai...</p>
+        <p>Loading Meri Kamai...</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#05080f] bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(16,185,129,0.1),rgba(255,255,255,0))] text-slate-100 font-sans selection:bg-emerald-500/30 overflow-hidden flex flex-col">
+    <div className="min-h-screen bg-[#05080f] bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(245,158,11,0.1),rgba(255,255,255,0))] text-slate-100 font-sans selection:bg-amber-500/30 overflow-hidden flex flex-col">
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
       <header className="px-6 pt-12 pb-4 bg-black/10 backdrop-blur-2xl border-b border-white/[0.05] sticky top-0 z-10 flex justify-between items-center">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center shadow-[0_0_20px_rgba(52,211,153,0.3)] border border-white/20">
-            <Wallet size={18} className="text-white drop-shadow-md" />
+          {/* Beautiful Golden Icon */}
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center shadow-[0_0_20px_rgba(245,158,11,0.3)] border border-amber-300/30">
+            <IndianRupee size={22} className="text-white drop-shadow-md" strokeWidth={2.5} />
           </div>
           <div>
-            <h1 className="text-xl font-bold bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent leading-none tracking-tight">Meri Kamai</h1>
-            <p className="text-[10px] font-medium text-emerald-400 mt-1 uppercase tracking-widest flex items-center gap-1">
-               {isSyncing ? <RefreshCw size={10} className="animate-spin" /> : <Database size={10}/>} 
-               {isSyncing ? 'Syncing...' : 'Sheet Active'}
+            <h1 className="text-xl font-bold bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent leading-none tracking-tight">Meri Kamai</h1>
+            {/* Rahul Saini Name Section */}
+            <p className="text-[10px] font-bold text-amber-400 mt-1 uppercase tracking-widest flex items-center gap-1.5">
+               <User size={12} className="text-amber-500/80" /> RAHUL SAINI
             </p>
           </div>
         </div>
@@ -465,7 +460,7 @@ export default function App() {
       {activeTab !== 'settings' && (
         <button 
           onClick={() => setIsTxModalOpen(true)}
-          className="fixed bottom-28 right-6 w-14 h-14 rounded-full bg-gradient-to-br from-emerald-400 to-teal-600 text-white flex items-center justify-center shadow-[0_8px_30px_rgba(16,185,129,0.4)] hover:scale-105 active:scale-95 transition-all z-20 border border-white/20"
+          className="fixed bottom-28 right-6 w-14 h-14 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 text-white flex items-center justify-center shadow-[0_8px_30px_rgba(245,158,11,0.4)] hover:scale-105 active:scale-95 transition-all z-20 border border-white/20"
         >
           <Plus size={28} strokeWidth={2.5} />
         </button>
@@ -571,7 +566,7 @@ function Dashboard({ metrics, transactions, viewMode, viewDate, customDateRange 
   return (
     <div className="space-y-8 animate-in fade-in duration-500 relative z-0">
       <div className="relative rounded-[2rem] overflow-hidden bg-gradient-to-br from-[#1a2436] to-[#0f1420] border border-white/[0.08] shadow-[0_20px_40px_rgba(0,0,0,0.4)] p-7">
-        <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"></div>
+        <div className="absolute top-0 right-0 w-48 h-48 bg-amber-500/10 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"></div>
         
         <div className="relative z-10">
           <p className="text-slate-400 text-xs font-semibold mb-1 tracking-wider uppercase">Net Balance ({periodLabel})</p>
@@ -733,9 +728,6 @@ function TransactionList({ transactions, onEdit, onDelete }) {
 }
 
 function Analytics({ transactions, viewMode, viewDate, customDateRange, metrics }) {
-  const [aiAdvice, setAiAdvice] = useState(null);
-  const [isGeneratingAdvice, setIsGeneratingAdvice] = useState(false);
-
   const chartData = useMemo(() => {
     let start, end, format;
     if (viewMode === 'month') {
@@ -764,6 +756,7 @@ function Analytics({ transactions, viewMode, viewDate, customDateRange, metrics 
     }
 
     transactions.forEach(tx => {
+      // Sirf kharche (Expenses) ko chart me dikhane ke liye
       if (tx.type !== 'Expense' || cleanText(tx.category).toLowerCase().includes('saving')) return;
       const d = parseDate(tx.date);
       let key = format === 'day' ? `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}` : format === 'month' ? `${d.getFullYear()}-${d.getMonth()}` : d.getFullYear().toString();
@@ -776,15 +769,13 @@ function Analytics({ transactions, viewMode, viewDate, customDateRange, metrics 
     return results.map(r => ({ ...r, height: (r.amount / max) * 100 }));
   }, [transactions, viewMode, viewDate, customDateRange]);
 
-  const handleGetAdvice = async () => {
-    // This feature requires a Gemini API Key to work.
-    setAiAdvice("To use AI insights, please add your Gemini API Key in the code.");
-  };
-
   const totalFlow = metrics.periodIncome + metrics.periodExpense + metrics.periodSavings;
   const iPct = totalFlow > 0 ? (metrics.periodIncome / totalFlow) * 100 : 0;
   const sPct = totalFlow > 0 ? (metrics.periodSavings / totalFlow) * 100 : 0;
   const ePct = totalFlow > 0 ? (metrics.periodExpense / totalFlow) * 100 : 0;
+
+  // Check agar iss mahine koi kharcha hai ya nahi
+  const totalExpensesInChart = chartData.reduce((sum, item) => sum + item.amount, 0);
 
   return (
     <div className="space-y-6 animate-in slide-in-from-right-4 duration-300 relative z-0">
@@ -801,53 +792,30 @@ function Analytics({ transactions, viewMode, viewDate, customDateRange, metrics 
            <div className="h-full bg-gradient-to-r from-rose-500 to-pink-500 transition-all duration-1000" style={{ width: `${ePct}%` }}></div>
         </div>
       </div>
-
-      <div className="bg-gradient-to-br from-indigo-900/30 to-transparent border border-indigo-500/20 rounded-3xl p-6 shadow-2xl relative overflow-hidden">
-        <div className="flex justify-between items-start mb-4 relative z-10">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 flex items-center justify-center border border-indigo-500/30 shadow-[0_0_15px_rgba(99,102,241,0.2)]">
-               <Bot size={20} className="text-indigo-400" />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-white tracking-wide">AI Assistant</h3>
-              <p className="text-[10px] text-indigo-300 uppercase tracking-widest">Smart Insight</p>
-            </div>
-          </div>
-          {!aiAdvice && !isGeneratingAdvice && (
-            <button onClick={handleGetAdvice} className="px-4 py-2 bg-indigo-500 hover:bg-indigo-400 text-white text-[11px] font-bold rounded-xl shadow-[0_0_20px_rgba(99,102,241,0.4)] transition-all flex items-center gap-1.5"><Sparkles size={14} /> Analyze</button>
-          )}
-        </div>
-        {isGeneratingAdvice && <div className="flex items-center gap-2 text-indigo-300 text-xs py-4 animate-pulse"><Sparkles size={14} className="animate-spin" /> Thinking...</div>}
-        {aiAdvice && !isGeneratingAdvice && (
-          <div className="text-xs text-slate-300 leading-relaxed bg-black/30 p-4 rounded-2xl border border-white/5 backdrop-blur-md">
-            <div dangerouslySetInnerHTML={{ __html: aiAdvice }} className="space-y-2" />
-            <button onClick={handleGetAdvice} className="mt-4 text-[10px] uppercase tracking-wider font-bold text-indigo-400 hover:text-indigo-300 flex items-center gap-1"><Sparkles size={12} /> Refresh</button>
-          </div>
-        )}
-      </div>
       
       <div className="bg-white/[0.02] rounded-3xl border border-white/[0.05] p-6 shadow-2xl">
-        <h3 className="text-[13px] font-bold text-slate-400 uppercase tracking-widest mb-6">Spending Trend</h3>
-        {chartData.length > 0 ? (
-          <div className="flex items-end h-40 mt-4 gap-[3px] overflow-x-auto pb-4 custom-scrollbar">
+        <h3 className="text-[13px] font-bold text-slate-400 uppercase tracking-widest mb-2">Spending Trend</h3>
+        
+        {totalExpensesInChart > 0 ? (
+          <div className="flex items-end h-48 mt-4 gap-2 overflow-x-auto pb-2 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
             {chartData.map((dataPoint, i) => (
-              <div key={i} className={`flex flex-col items-center shrink-0 group ${chartData.length > 15 ? 'w-5' : 'flex-1'}`}>
+              <div key={i} className="flex flex-col items-center shrink-0 min-w-[28px] flex-1 group">
                 <div className="relative w-full flex justify-center h-full items-end pb-2">
-                  <div className="absolute -top-12 opacity-0 group-hover:opacity-100 transition-opacity bg-[#1e293b] border border-white/10 text-xs text-white px-2.5 py-1.5 rounded-lg shadow-2xl whitespace-nowrap z-10 pointer-events-none flex flex-col items-center">
+                  <div className="absolute -top-10 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-800 border border-white/10 text-xs text-white px-2.5 py-1.5 rounded-lg shadow-2xl whitespace-nowrap z-10 pointer-events-none flex flex-col items-center">
                     <span className="font-bold">{formatCurrency(dataPoint.amount)}</span>
                     <span className="text-[9px] text-slate-400">{dataPoint.tooltip}</span>
                   </div>
                   <div 
-                    className={`w-full max-w-[16px] rounded-[3px] transition-all duration-500 ease-out ${dataPoint.amount > 0 ? 'bg-gradient-to-t from-rose-600 to-rose-400 shadow-[0_0_10px_rgba(244,63,94,0.4)]' : 'bg-white/[0.03]'}`} 
+                    className={`w-full max-w-[20px] rounded-[4px] transition-all duration-500 ease-out ${dataPoint.amount > 0 ? 'bg-gradient-to-t from-rose-600 to-rose-400 shadow-[0_0_10px_rgba(244,63,94,0.4)]' : 'bg-white/[0.03]'}`} 
                     style={{ height: dataPoint.amount > 0 ? `${Math.max(dataPoint.height, 8)}%` : '6px' }}
                   ></div>
                 </div>
-                <span className={`text-[8px] mt-2 text-center whitespace-nowrap truncate w-full font-medium ${dataPoint.amount > 0 ? 'text-slate-300' : 'text-slate-600'}`}>{dataPoint.label}</span>
+                <span className={`text-[9px] mt-1 text-center whitespace-nowrap truncate w-full font-medium ${dataPoint.amount > 0 ? 'text-slate-300' : 'text-slate-600'}`}>{dataPoint.label}</span>
               </div>
             ))}
           </div>
         ) : (
-          <div className="h-40 flex items-center justify-center text-slate-600 text-xs font-medium">Add records to view graph.</div>
+          <div className="h-40 flex items-center justify-center text-slate-500 text-xs font-medium">No expenses to show for this period.</div>
         )}
       </div>
     </div>
@@ -945,8 +913,8 @@ function SettingsView({ sheetUrl, onSaveSheetUrl, onManualSync, isSyncing, onUpl
 
 function NavButton({ icon, label, isActive, onClick }) {
   return (
-    <button onClick={onClick} className={`flex flex-col items-center justify-center w-16 gap-1.5 transition-all duration-300 ${isActive ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'}`}>
-      <div className={`transition-all duration-300 ${isActive ? '-translate-y-1.5 drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]' : ''}`}>{icon}</div>
+    <button onClick={onClick} className={`flex flex-col items-center justify-center w-16 gap-1.5 transition-all duration-300 ${isActive ? 'text-amber-400' : 'text-slate-500 hover:text-slate-300'}`}>
+      <div className={`transition-all duration-300 ${isActive ? '-translate-y-1.5 drop-shadow-[0_0_8px_rgba(245,158,11,0.5)]' : ''}`}>{icon}</div>
       <span className={`text-[9px] font-bold uppercase tracking-wider transition-all duration-300 ${isActive ? 'opacity-100' : 'opacity-0 translate-y-2'}`}>{label}</span>
     </button>
   );
@@ -1030,14 +998,14 @@ function TransactionModal({ tx, transactions, onClose, onSave }) {
             <label className="text-[10px] uppercase font-bold tracking-widest text-slate-500 block mb-2">Amount (INR)</label>
             <div className="relative">
               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-lg">₹</span>
-              <input type="number" required value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" step="0.01" className="w-full bg-black/20 border border-white/5 rounded-xl py-3.5 pl-9 pr-4 text-white text-xl font-bold tracking-tight focus:outline-none focus:border-emerald-500/50 transition-colors placeholder-slate-800" />
+              <input type="number" required value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" step="0.01" className="w-full bg-black/20 border border-white/5 rounded-xl py-3.5 pl-9 pr-4 text-white text-xl font-bold tracking-tight focus:outline-none focus:border-amber-500/50 transition-colors placeholder-slate-800" />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
              <div>
               <label className="text-[10px] uppercase font-bold tracking-widest text-slate-500 block mb-2">Date</label>
-              <input type="date" required value={date} onChange={(e) => setDate(e.target.value)} className="w-full bg-black/20 border border-white/5 rounded-xl p-3.5 text-white text-sm focus:outline-none focus:border-emerald-500/50 transition-colors style-color-scheme-dark font-medium" />
+              <input type="date" required value={date} onChange={(e) => setDate(e.target.value)} className="w-full bg-black/20 border border-white/5 rounded-xl p-3.5 text-white text-sm focus:outline-none focus:border-amber-500/50 transition-colors style-color-scheme-dark font-medium" />
             </div>
             <div>
               <label className="text-[10px] uppercase font-bold tracking-widest text-slate-500 block mb-2">Category</label>
@@ -1049,7 +1017,7 @@ function TransactionModal({ tx, transactions, onClose, onSave }) {
                 onChange={(e) => setCategory(e.target.value)} 
                 placeholder={type === 'Expense' ? "e.g. Food, Salary" : "e.g. Salary, Gift"} 
                 list="dynamic-categories" 
-                className="w-full bg-black/20 border border-white/5 rounded-xl p-3.5 text-white text-sm focus:outline-none focus:border-emerald-500/50 transition-colors font-medium placeholder-slate-700" 
+                className="w-full bg-black/20 border border-white/5 rounded-xl p-3.5 text-white text-sm focus:outline-none focus:border-amber-500/50 transition-colors font-medium placeholder-slate-700" 
               />
               <datalist id="dynamic-categories">
                 {dynamicCategories.map(c => <option key={c} value={c} />)}
@@ -1060,10 +1028,10 @@ function TransactionModal({ tx, transactions, onClose, onSave }) {
 
           <div>
             <label className="text-[10px] uppercase font-bold tracking-widest text-slate-500 block mb-2">Note (Optional)</label>
-            <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="What was this for?" className="w-full bg-black/20 border border-white/5 rounded-xl p-3.5 text-white text-sm focus:outline-none focus:border-emerald-500/50 transition-colors font-medium placeholder-slate-700" />
+            <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="What was this for?" className="w-full bg-black/20 border border-white/5 rounded-xl p-3.5 text-white text-sm focus:outline-none focus:border-amber-500/50 transition-colors font-medium placeholder-slate-700" />
           </div>
 
-          <button type="submit" className="w-full py-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-bold tracking-wide shadow-[0_10px_30px_rgba(16,185,129,0.3)] hover:scale-[1.02] active:scale-[0.98] transition-all mt-6">Save Record</button>
+          <button type="submit" className="w-full py-4 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 text-white font-bold tracking-wide shadow-[0_10px_30px_rgba(245,158,11,0.3)] hover:scale-[1.02] active:scale-[0.98] transition-all mt-6">Save Record</button>
         </form>
       </div>
     </div>
