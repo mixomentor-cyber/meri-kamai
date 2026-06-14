@@ -963,7 +963,7 @@ function TxRow({ tx, isLast, onClick }) {
         <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border ${colorClass}`}><Icon size={18} strokeWidth={2.5} /></div>
         <div className="overflow-hidden">
           <p className="text-[14px] font-bold text-white truncate tracking-wide">{cleanText(tx.category) || cleanText(tx.note) || 'Other'}</p>
-          <p className="text-[11px] text-slate-500 truncate mt-0.5 font-medium">{new Date(tx.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })} • {cleanText(tx.note) || tx.type}</p>
+          <p className="text-[11px] text-slate-500 truncate mt-0.5 font-medium">{new Date(tx.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })} Â• {cleanText(tx.note) || tx.type}</p>
         </div>
       </div>
       <div className="text-right shrink-0 ml-4">
