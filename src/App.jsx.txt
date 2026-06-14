@@ -1,0 +1,1071 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { 
+  Home, PieChart as PieChartIcon, List, Settings, Plus, 
+  Upload, Download, Trash2, AlertCircle, CheckCircle2, Search, X, 
+  ChevronRight, ChevronLeft, Wallet, Sparkles, Bot, Receipt, 
+  ArrowDownRight, ArrowUpRight, Cloud, Database, Sun, Moon, PiggyBank, RefreshCw, Save
+} from 'lucide-react';
+
+// ==========================================
+// ?? DEFAULT GOOGLE SHEET LINK YAHAN DALEIN ??
+// ==========================================
+const DEFAULT_SHEET_URL = "https://script.google.com/macros/s/AKfycbzB6cmNT9vvDR3BoIYJXKMmaUEF0V2zDBCw70wnmqg-3idRa0Y4vqEaJgl_VnNmvWtl2A/exec"; 
+// Example: "https://script.google.com/macros/s/AKfycbz.../exec"
+// ==========================================
+
+// --- UTILS ---
+const formatCurrency = (amount) => {
+  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
+};
+
+const parseDate = (dateString) => {
+  if (!dateString) return new Date();
+  const d = new Date(dateString);
+  return isNaN(d) ? new Date() : d;
+};
+
+const cleanText = (str) => {
+  if (!str) return '';
+  const cleaned = str.replace(/[^\x20-\x7E]/g, "").trim();
+  return cleaned || 'Other';
+};
+
+const loadXLSX = async () => {
+  if (window.XLSX) return window.XLSX;
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    script.onload = () => resolve(window.XLSX);
+    script.onerror = () => reject(new Error('Failed to load xlsx library'));
+    document.body.appendChild(script);
+  });
+};
+
+// --- CUSTOM UI COMPONENTS ---
+const Toast = ({ message, type, onClose }) => {
+  useEffect(() => {
+    const timer = setTimeout(onClose, 3000);
+    return () => clearTimeout(timer);
+  }, [onClose]);
+
+  return (
+    <div className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-[100] flex items-center gap-2 px-4 py-3 rounded-2xl shadow-2xl text-sm font-medium transition-all animate-in fade-in slide-in-from-top-4 border ${type === 'error' ? 'bg-rose-500/10 border-rose-500/20 text-rose-100 backdrop-blur-xl' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-100 backdrop-blur-xl'}`}>
+      {type === 'error' ? <AlertCircle size={16} className="text-rose-400" /> : <CheckCircle2 size={16} className="text-emerald-400" />}
+      {message}
+    </div>
+  );
+};
+
+function PeriodSelector({ viewMode, setViewMode, viewDate, setViewDate, customDateRange, setCustomDateRange }) {
+  const prev = () => { 
+    const d = new Date(viewDate); 
+    if (viewMode === 'month') d.setMonth(d.getMonth() - 1); 
+    else if (viewMode === 'year') d.setFullYear(d.getFullYear() - 1);
+    setViewDate(d); 
+  };
+  const next = () => { 
+    const d = new Date(viewDate); 
+    if (viewMode === 'month') d.setMonth(d.getMonth() + 1); 
+    else if (viewMode === 'year') d.setFullYear(d.getFullYear() + 1);
+    setViewDate(d); 
+  };
+  
+  return (
+    <div className="bg-white/[0.02] backdrop-blur-md rounded-2xl p-2 border border-white/[0.05] mb-6 shadow-xl flex flex-col gap-2 relative z-20">
+      <div className="flex items-center justify-between">
+        <select 
+          value={viewMode} 
+          onChange={(e) => setViewMode(e.target.value)}
+          className="bg-white/[0.05] text-white text-xs font-semibold rounded-xl px-3 py-2.5 border border-transparent outline-none focus:border-emerald-500/50 transition-colors appearance-none cursor-pointer"
+        >
+          <option value="month" className="bg-slate-900">Monthly View</option>
+          <option value="year" className="bg-slate-900">Yearly View</option>
+          <option value="all" className="bg-slate-900">All Time History</option>
+          <option value="custom" className="bg-slate-900">Specific Dates</option>
+        </select>
+
+        {viewMode !== 'all' && viewMode !== 'custom' && (
+          <div className="flex items-center gap-1 bg-white/[0.03] rounded-xl p-1 border border-white/[0.02]">
+            <button onClick={prev} className="p-1.5 text-slate-400 hover:text-white transition-colors rounded-lg hover:bg-white/10 active:scale-95"><ChevronLeft size={16}/></button>
+            <span className="font-semibold text-white text-xs tracking-wide min-w-[90px] text-center">
+              {viewMode === 'month' ? viewDate.toLocaleString('default', { month: 'short', year: 'numeric' }) : viewDate.getFullYear()}
+            </span>
+            <button onClick={next} className="p-1.5 text-slate-400 hover:text-white transition-colors rounded-lg hover:bg-white/10 active:scale-95"><ChevronRight size={16}/></button>
+          </div>
+        )}
+      </div>
+
+      {viewMode === 'custom' && (
+        <div className="flex items-center gap-2 w-full pt-2 border-t border-white/5">
+          <input 
+            type="date" 
+            value={customDateRange.start}
+            onChange={(e) => setCustomDateRange(prev => ({...prev, start: e.target.value}))}
+            className="flex-1 bg-black/20 border border-white/5 rounded-xl p-2.5 text-slate-300 text-xs focus:outline-none focus:border-emerald-500/50 transition-colors style-color-scheme-dark"
+          />
+          <span className="text-slate-600 text-[10px] font-bold tracking-widest px-1">TO</span>
+          <input 
+            type="date" 
+            value={customDateRange.end}
+            onChange={(e) => setCustomDateRange(prev => ({...prev, end: e.target.value}))}
+            className="flex-1 bg-black/20 border border-white/5 rounded-xl p-2.5 text-slate-300 text-xs focus:outline-none focus:border-emerald-500/50 transition-colors style-color-scheme-dark"
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- MAIN APP COMPONENT ---
+export default function App() {
+  const [transactions, setTransactions] = useState([]);
+  const [activeTab, setActiveTab] = useState('home');
+  const [toast, setToast] = useState(null);
+  const [sheetUrl, setSheetUrl] = useState('');
+  
+  const [viewMode, setViewMode] = useState('month'); 
+  const [viewDate, setViewDate] = useState(new Date());
+  const [customDateRange, setCustomDateRange] = useState({
+    start: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
+    end: new Date().toISOString().split('T')[0]
+  });
+
+  const [isTxModalOpen, setIsTxModalOpen] = useState(false);
+  const [editingTx, setEditingTx] = useState(null);
+  
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isAppLoading, setIsAppLoading] = useState(true);
+
+  const showToast = (message, type = 'success') => setToast({ message, type });
+
+  // PULL DATA FROM GOOGLE SHEET
+  const syncFromSheet = async (urlToUse) => {
+    if (!urlToUse) return;
+    setIsSyncing(true);
+    try {
+      const response = await fetch(`${urlToUse}?action=restore`);
+      const result = await response.json();
+      if (result && result.status === 'success' && Array.isArray(result.data)) {
+        setTransactions(result.data);
+        localStorage.setItem('fintrack_local_tx', JSON.stringify(result.data)); // Save locally to prevent blank screen next time
+        if(result.data.length > 0) {
+          showToast("Data Auto-Restored from Sheet!", "success");
+        }
+      }
+    } catch (err) {
+      console.error("Auto-fetch error", err);
+      showToast("Sync failed. Check Sheet URL.", "error");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // AUTO-RESTORE Data on App Start
+  useEffect(() => {
+    const initApp = async () => {
+      // 1. Fast Load from Local Storage First (taki 0 na dikhe)
+      const savedTx = localStorage.getItem('fintrack_local_tx');
+      if (savedTx) {
+        try { setTransactions(JSON.parse(savedTx)); } catch(e){}
+      }
+      
+      const currentUrl = localStorage.getItem('fintrack_sheet_url') || DEFAULT_SHEET_URL;
+      setSheetUrl(currentUrl);
+
+      // 2. Auto-Restore from Google Sheet in background
+      if (currentUrl) {
+        await syncFromSheet(currentUrl);
+      }
+      setIsAppLoading(false);
+    };
+
+    initApp();
+  }, []);
+
+  const periodTransactions = useMemo(() => {
+    return transactions.filter(tx => {
+      const d = parseDate(tx.date);
+      if (viewMode === 'all') return true;
+      if (viewMode === 'month') return d.getMonth() === viewDate.getMonth() && d.getFullYear() === viewDate.getFullYear();
+      if (viewMode === 'year') return d.getFullYear() === viewDate.getFullYear();
+      if (viewMode === 'custom') {
+        const start = new Date(customDateRange.start); start.setHours(0,0,0,0);
+        const end = new Date(customDateRange.end); end.setHours(23,59,59,999);
+        return d >= start && d <= end;
+      }
+      return true;
+    });
+  }, [transactions, viewDate, viewMode, customDateRange]);
+
+  const metrics = useMemo(() => {
+    let periodIncome = 0, periodExpense = 0, periodSavings = 0;
+    const expenseCatMap = {}, incomeCatMap = {}, savingsCatMap = {};
+
+    periodTransactions.forEach(tx => {
+      const amt = parseFloat(tx.amount) || 0;
+      const cName = cleanText(tx.category) || 'Other';
+      const isSavings = cName.toLowerCase().includes('saving');
+      
+      if (tx.type === 'Income') {
+        periodIncome += amt;
+        incomeCatMap[cName] = (incomeCatMap[cName] || 0) + amt;
+      } else if (isSavings) {
+        periodSavings += amt;
+        savingsCatMap[cName] = (savingsCatMap[cName] || 0) + amt;
+      } else {
+        periodExpense += amt;
+        expenseCatMap[cName] = (expenseCatMap[cName] || 0) + amt;
+      }
+    });
+
+    const balance = periodIncome - periodExpense - periodSavings;
+    
+    const processCategories = (map, totalAmt) => {
+      return Object.entries(map)
+        .sort((a,b) => b[1] - a[1])
+        .map(([name, amount]) => ({ name, amount, percent: totalAmt > 0 ? (amount / totalAmt) * 100 : 0 }));
+    };
+
+    return { 
+      balance, periodIncome, periodExpense, periodSavings, 
+      topExpenses: processCategories(expenseCatMap, periodExpense), 
+      topIncomes: processCategories(incomeCatMap, periodIncome), 
+      topSavings: processCategories(savingsCatMap, periodSavings) 
+    };
+  }, [periodTransactions]);
+
+  // --- AUTO BACKUP ON SAVE ---
+  const handleSaveTransaction = (data) => {
+    const txId = data.id || Date.now().toString();
+    const payload = { ...data, id: txId, amount: parseFloat(data.amount) };
+    
+    let finalData = [];
+    setTransactions(prev => {
+      const updated = prev.filter(t => t.id !== txId);
+      updated.push(payload);
+      finalData = updated.sort((a, b) => new Date(b.date) - new Date(a.date));
+      // Save locally instantly
+      localStorage.setItem('fintrack_local_tx', JSON.stringify(finalData));
+      return finalData;
+    });
+    
+    // Background Auto-Sync to Google Sheet
+    if (sheetUrl) {
+      setIsSyncing(true);
+      fetch(sheetUrl, { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
+        body: JSON.stringify({ action: 'backup', data: finalData }) 
+      })
+      .then(() => showToast("Auto-Saved to Sheet!"))
+      .catch(() => showToast("Auto-save failed.", "error"))
+      .finally(() => setIsSyncing(false));
+    } else {
+      showToast(data.id ? "Updated Locally" : "Saved Locally");
+    }
+    
+    setIsTxModalOpen(false);
+    setEditingTx(null);
+  };
+
+  // --- AUTO BACKUP ON DELETE ---
+  const handleDelete = (id) => {
+    let finalData = [];
+    setTransactions(prev => {
+      finalData = prev.filter(t => t.id !== id);
+      localStorage.setItem('fintrack_local_tx', JSON.stringify(finalData));
+      return finalData;
+    });
+    
+    // Background Auto-Sync
+    if (sheetUrl) {
+      setIsSyncing(true);
+      fetch(sheetUrl, { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
+        body: JSON.stringify({ action: 'backup', data: finalData }) 
+      })
+      .then(() => showToast("Deleted from Sheet!"))
+      .catch(() => showToast("Auto-delete failed.", "error"))
+      .finally(() => setIsSyncing(false));
+    } else {
+      showToast("Deleted Locally");
+    }
+  };
+
+  // --- SAVE LINK & TRIGGER INSTANT AUTO-RESTORE ---
+  const saveSheetUrl = async (url) => {
+    if(!url) return showToast("Please enter a valid URL", "error");
+    setSheetUrl(url);
+    localStorage.setItem('fintrack_sheet_url', url);
+    showToast("Link Saved! Fetching data...");
+    
+    // Yahan par humne naya logic dala hai jo link save hote hi automatically data le aayega
+    await syncFromSheet(url); 
+  };
+
+  const handleManualSync = async () => {
+    if (!sheetUrl) return showToast("Sheet URL is missing.", "error");
+    setIsSyncing(true);
+    try {
+      await fetch(sheetUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'backup', data: transactions })
+      });
+      showToast("Force Synced to Google Sheet!");
+    } catch (err) {
+      showToast("Sync failed.", "error");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleFileUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    event.target.value = null;
+    showToast("Reading your file...", "success");
+
+    try {
+      let jsonData = [];
+      const isCSV = file.name.toLowerCase().endsWith('.csv') || file.type.includes('csv');
+
+      if (isCSV) {
+        const text = await file.text();
+        if (!text.startsWith('PK')) { 
+          const lines = text.split(/\r?\n/);
+          if (lines.length > 0) {
+            const headers = lines[0].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(h => h.replace(/^"|"$/g, '').trim());
+            for (let i = 1; i < lines.length; i++) {
+              if (!lines[i].trim()) continue;
+              const values = lines[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+              const row = {};
+              headers.forEach((h, idx) => { row[h] = values[idx] ? values[idx].replace(/^"|"$/g, '').trim() : ''; });
+              jsonData.push(row);
+            }
+          }
+        }
+      }
+
+      if (jsonData.length === 0) {
+        const XLSX = await loadXLSX();
+        const arrayBuffer = await file.arrayBuffer();
+        let workbook = XLSX.read(arrayBuffer, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+        jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheetName], { defval: "" });
+      }
+      
+      const newDocs = [];
+      jsonData.forEach((row, index) => {
+        const getVal = (possibleKeys) => {
+          const key = Object.keys(row).find(k => possibleKeys.some(pk => k.toLowerCase().includes(pk.toLowerCase())));
+          return key ? row[key] : '';
+        };
+        const rawDate = getVal(['date']), amount = parseFloat(getVal(['amount', 'inr']));
+        if (rawDate && !isNaN(amount)) {
+          let parsedDate = typeof rawDate === 'number' ? new Date(Math.round((rawDate - 25569) * 86400 * 1000)) : new Date(rawDate);
+          newDocs.push({
+            id: Date.now().toString() + index,
+            date: (isNaN(parsedDate) ? new Date() : parsedDate).toISOString(),
+            type: getVal(['income/expense', 'type']).toString().toLowerCase().includes('income') ? 'Income' : 'Expense',
+            category: cleanText(getVal(['category'])) || 'Other',
+            amount: Math.abs(amount) || 0,
+            note: cleanText(getVal(['note', 'description'])) || '',
+            createdAt: new Date().toISOString()
+          });
+        }
+      });
+
+      if (newDocs.length > 0) {
+        let finalData = [];
+        setTransactions(prev => {
+           finalData = [...newDocs, ...prev].sort((a, b) => new Date(b.date) - new Date(a.date));
+           localStorage.setItem('fintrack_local_tx', JSON.stringify(finalData));
+           return finalData;
+        });
+
+        if (sheetUrl) {
+          setIsSyncing(true);
+          showToast(`Imported ${newDocs.length} records. Uploading to Sheet...`);
+          fetch(sheetUrl, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'backup', data: finalData }) })
+            .then(() => showToast("Sheet Updated!"))
+            .catch(()=>{})
+            .finally(() => setIsSyncing(false));
+        } else {
+          showToast(`Imported Locally!`);
+        }
+      } else { showToast("No valid data found in file.", "error"); }
+    } catch (err) { showToast("Import Failed.", "error"); }
+  };
+
+  const handleLocalExport = () => {
+    if (transactions.length === 0) return showToast("Nothing to export", "error");
+    const csvContent = ["Date,Type,Category,Amount,Note\n" + transactions.map(tx => [new Date(tx.date).toISOString().split('T')[0], tx.type, `"${cleanText(tx.category)}"`, tx.amount, `"${cleanText(tx.note)}"`].join(",")).join("\n")];
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }));
+    link.download = `meri_kamai_backup_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+  };
+
+  if (isAppLoading) {
+    return (
+      <div className="min-h-screen bg-[#05080f] flex flex-col items-center justify-center font-bold gap-3 text-emerald-500">
+        <RefreshCw className="animate-spin" size={32} />
+        <p>Starting Meri Kamai...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[#05080f] bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(16,185,129,0.1),rgba(255,255,255,0))] text-slate-100 font-sans selection:bg-emerald-500/30 overflow-hidden flex flex-col">
+      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+
+      <header className="px-6 pt-12 pb-4 bg-black/10 backdrop-blur-2xl border-b border-white/[0.05] sticky top-0 z-10 flex justify-between items-center">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center shadow-[0_0_20px_rgba(52,211,153,0.3)] border border-white/20">
+            <Wallet size={18} className="text-white drop-shadow-md" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent leading-none tracking-tight">Meri Kamai</h1>
+            <p className="text-[10px] font-medium text-emerald-400 mt-1 uppercase tracking-widest flex items-center gap-1">
+               {isSyncing ? <RefreshCw size={10} className="animate-spin" /> : <Database size={10}/>} 
+               {isSyncing ? 'Syncing...' : 'Sheet Active'}
+            </p>
+          </div>
+        </div>
+      </header>
+
+      <main className="flex-1 overflow-y-auto pb-28 scroll-smooth pt-6 px-6 relative z-0">
+        {activeTab !== 'settings' && (
+          <PeriodSelector 
+            viewMode={viewMode} setViewMode={setViewMode} 
+            viewDate={viewDate} setViewDate={setViewDate} 
+            customDateRange={customDateRange} setCustomDateRange={setCustomDateRange} 
+          />
+        )}
+
+        <div className="pb-6">
+          {activeTab === 'home' && <Dashboard metrics={metrics} transactions={periodTransactions} viewMode={viewMode} viewDate={viewDate} customDateRange={customDateRange} />}
+          {activeTab === 'transactions' && <TransactionList transactions={periodTransactions} onEdit={(tx) => { setEditingTx(tx); setIsTxModalOpen(true); }} onDelete={handleDelete} />}
+          {activeTab === 'analytics' && <Analytics transactions={periodTransactions} viewMode={viewMode} viewDate={viewDate} customDateRange={customDateRange} metrics={metrics} />}
+          {activeTab === 'settings' && (
+            <SettingsView 
+              sheetUrl={sheetUrl}
+              onSaveSheetUrl={saveSheetUrl}
+              onManualSync={handleManualSync}
+              isSyncing={isSyncing}
+              onUpload={handleFileUpload} 
+              onExport={handleLocalExport} 
+            />
+          )}
+        </div>
+      </main>
+
+      {activeTab !== 'settings' && (
+        <button 
+          onClick={() => setIsTxModalOpen(true)}
+          className="fixed bottom-28 right-6 w-14 h-14 rounded-full bg-gradient-to-br from-emerald-400 to-teal-600 text-white flex items-center justify-center shadow-[0_8px_30px_rgba(16,185,129,0.4)] hover:scale-105 active:scale-95 transition-all z-20 border border-white/20"
+        >
+          <Plus size={28} strokeWidth={2.5} />
+        </button>
+      )}
+
+      <nav className="fixed bottom-0 w-full bg-[#0a0e17]/80 backdrop-blur-2xl border-t border-white/[0.05] pb-safe z-30 shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
+        <div className="flex justify-around items-center h-20 px-2 pb-4 pt-2">
+          <NavButton icon={<Home size={22} />} label="Home" isActive={activeTab === 'home'} onClick={() => setActiveTab('home')} />
+          <NavButton icon={<List size={22} />} label="Records" isActive={activeTab === 'transactions'} onClick={() => setActiveTab('transactions')} />
+          <NavButton icon={<PieChartIcon size={22} />} label="Analytics" isActive={activeTab === 'analytics'} onClick={() => setActiveTab('analytics')} />
+          <NavButton icon={<Settings size={22} />} label="Settings" isActive={activeTab === 'settings'} onClick={() => setActiveTab('settings')} />
+        </div>
+      </nav>
+
+      {isTxModalOpen && (
+        <TransactionModal tx={editingTx} transactions={transactions} onClose={() => { setIsTxModalOpen(false); setEditingTx(null); }} onSave={handleSaveTransaction} />
+      )}
+    </div>
+  );
+}
+
+// --- SUBVIEWS ---
+
+function BreakdownSection({ title, categories, transactions, colors, txFilter, viewMode, customDateRange }) {
+  const [expandedCat, setExpandedCat] = useState(null);
+  const isLongPeriod = viewMode === 'year' || viewMode === 'all' || (viewMode === 'custom' && ((new Date(customDateRange.end) - new Date(customDateRange.start)) / (1000 * 60 * 60 * 24) > 60));
+
+  if (categories.length === 0) return null;
+
+  return (
+    <div className="space-y-4">
+      <h3 className="text-[13px] font-bold text-slate-400 uppercase tracking-widest px-2">{title}</h3>
+      <div className="bg-white/[0.02] rounded-3xl border border-white/[0.05] p-5 shadow-2xl divide-y divide-white/[0.05]">
+        {categories.map((cat, i) => {
+          const isExpanded = expandedCat === cat.name;
+          const catTxs = transactions.filter(t => (cleanText(t.category) || 'Other') === cat.name && txFilter(t));
+          
+          let renderItems = [];
+          if (isExpanded) {
+            if (isLongPeriod) {
+              const monthMap = {};
+              catTxs.forEach(tx => {
+                  const d = new Date(tx.date);
+                  const key = `${d.getFullYear()}-${d.getMonth()}`;
+                  const label = d.toLocaleString('default', { month: 'short', year: 'numeric' });
+                  if(!monthMap[key]) monthMap[key] = { label, amount: 0, order: d.getTime() };
+                  monthMap[key].amount += tx.amount;
+              });
+              renderItems = Object.values(monthMap).sort((a,b) => b.order - a.order).map(item => ({
+                  id: item.label, title: item.label, subtitle: 'Total for Month', amount: item.amount
+              }));
+            } else {
+              renderItems = catTxs.map(tx => ({
+                  id: tx.id, title: cleanText(tx.note) || cleanText(tx.category) || 'Other', 
+                  subtitle: new Date(tx.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }), amount: tx.amount
+              }));
+            }
+          }
+          
+          return (
+            <div key={i} className="py-4 first:pt-0 last:pb-0">
+              <div className="space-y-3 cursor-pointer group select-none" onClick={() => setExpandedCat(isExpanded ? null : cat.name)}>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-200 font-medium truncate pr-4 flex items-center gap-2 text-[15px]">
+                    <div className={`w-2 h-2 rounded-full ${colors[i % colors.length]}`}></div>
+                    {cat.name} 
+                    <span className="text-slate-500 text-[11px] font-normal">({cat.percent.toFixed(1)}%)</span>
+                  </span>
+                  <div className="flex items-center gap-3">
+                    <span className="font-bold text-white tracking-tight">{formatCurrency(cat.amount)}</span>
+                    <ChevronRight size={16} className={`text-slate-600 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                  </div>
+                </div>
+                <div className="h-1.5 w-full bg-white/[0.03] rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full ${colors[i % colors.length]} shadow-[0_0_10px_currentColor] opacity-80`} style={{ width: `${cat.percent}%` }}></div>
+                </div>
+              </div>
+
+              {isExpanded && (
+                <div className="mt-5 ml-2 pl-4 border-l-2 border-white/10 space-y-4 animate-in slide-in-from-top-2 fade-in duration-300">
+                  {renderItems.map(item => (
+                    <div key={item.id} className="flex justify-between items-start gap-4">
+                      <div className="overflow-hidden">
+                        <p className="text-[13px] text-slate-300 truncate font-medium">{item.title}</p>
+                        <p className="text-[10px] text-slate-500 mt-0.5">{item.subtitle}</p>
+                      </div>
+                      <p className="text-[13px] font-semibold text-slate-300 shrink-0">{formatCurrency(item.amount)}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function Dashboard({ metrics, transactions, viewMode, viewDate, customDateRange }) {
+  const periodLabel = viewMode === 'all' ? 'All Time' : viewMode === 'year' ? viewDate.getFullYear() : viewMode === 'custom' ? 'Range' : viewDate.toLocaleString('default', { month: 'long', year: 'numeric' });
+
+  return (
+    <div className="space-y-8 animate-in fade-in duration-500 relative z-0">
+      <div className="relative rounded-[2rem] overflow-hidden bg-gradient-to-br from-[#1a2436] to-[#0f1420] border border-white/[0.08] shadow-[0_20px_40px_rgba(0,0,0,0.4)] p-7">
+        <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"></div>
+        
+        <div className="relative z-10">
+          <p className="text-slate-400 text-xs font-semibold mb-1 tracking-wider uppercase">Net Balance ({periodLabel})</p>
+          <div className="flex items-baseline gap-2 mb-8">
+            <h2 className="text-[2.5rem] font-bold text-white tracking-tight leading-none">
+              {formatCurrency(metrics.balance)}
+            </h2>
+          </div>
+          
+          <div className="grid grid-cols-3 gap-3">
+            <div className="bg-white/[0.03] rounded-2xl p-3 border border-white/[0.05] backdrop-blur-md">
+              <div className="flex items-center gap-1.5 mb-2">
+                <div className="w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center shrink-0">
+                  <ArrowDownRight size={12} className="text-emerald-400" />
+                </div>
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">In</span>
+              </div>
+              <p className="text-sm font-semibold text-white truncate">{formatCurrency(metrics.periodIncome)}</p>
+            </div>
+            
+            <div className="bg-white/[0.03] rounded-2xl p-3 border border-white/[0.05] backdrop-blur-md">
+              <div className="flex items-center gap-1.5 mb-2">
+                <div className="w-5 h-5 rounded-full bg-rose-500/20 flex items-center justify-center shrink-0">
+                  <ArrowUpRight size={12} className="text-rose-400" />
+                </div>
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Out</span>
+              </div>
+              <p className="text-sm font-semibold text-white truncate">{formatCurrency(metrics.periodExpense)}</p>
+            </div>
+            
+            <div className="bg-white/[0.03] rounded-2xl p-3 border border-white/[0.05] backdrop-blur-md">
+              <div className="flex items-center gap-1.5 mb-2">
+                <div className="w-5 h-5 rounded-full bg-blue-500/20 flex items-center justify-center shrink-0">
+                  <PiggyBank size={12} className="text-blue-400" />
+                </div>
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Save</span>
+              </div>
+              <p className="text-sm font-semibold text-white truncate">{formatCurrency(metrics.periodSavings)}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <BreakdownSection 
+        title="Expenses Summary"
+        categories={metrics.topExpenses} transactions={transactions}
+        colors={['bg-rose-500', 'bg-orange-500', 'bg-amber-500', 'bg-pink-500', 'bg-purple-500']}
+        txFilter={(t) => t.type === 'Expense' && !(cleanText(t.category) || 'Other').toLowerCase().includes('saving')}
+        viewMode={viewMode} customDateRange={customDateRange}
+      />
+      <BreakdownSection 
+        title="Savings Summary"
+        categories={metrics.topSavings} transactions={transactions}
+        colors={['bg-blue-500', 'bg-indigo-500', 'bg-cyan-500']}
+        txFilter={(t) => t.type === 'Expense' && (cleanText(t.category) || 'Other').toLowerCase().includes('saving')}
+        viewMode={viewMode} customDateRange={customDateRange}
+      />
+      <BreakdownSection 
+        title="Income Summary"
+        categories={metrics.topIncomes} transactions={transactions}
+        colors={['bg-emerald-500', 'bg-teal-500', 'bg-green-400']}
+        txFilter={(t) => t.type === 'Income'}
+        viewMode={viewMode} customDateRange={customDateRange}
+      />
+    </div>
+  );
+}
+
+function TransactionList({ transactions, onEdit, onDelete }) {
+  const [filterType, setFilterType] = useState('All'); 
+  const [filterCategory, setFilterCategory] = useState('All');
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const availableCategories = useMemo(() => {
+    const cats = new Set();
+    transactions.forEach(t => {
+      const cName = cleanText(t.category) || 'Other';
+      const isSavings = cName.toLowerCase().includes('saving');
+      if (filterType === 'Savings' && !isSavings) return;
+      if (filterType === 'Income' && t.type !== 'Income') return;
+      if (filterType === 'Expense' && (t.type !== 'Expense' || isSavings)) return;
+      cats.add(cName);
+    });
+    return Array.from(cats).sort();
+  }, [transactions, filterType]);
+
+  useEffect(() => { setFilterCategory('All'); }, [filterType]);
+
+  const filtered = useMemo(() => {
+    return transactions.filter(tx => {
+      const cName = cleanText(tx.category) || 'Other';
+      const isSavings = cName.toLowerCase().includes('saving');
+      
+      if (filterType === 'Income' && tx.type !== 'Income') return false;
+      if (filterType === 'Expense' && (tx.type !== 'Expense' || isSavings)) return false;
+      if (filterType === 'Savings' && !isSavings) return false;
+      if (filterCategory !== 'All' && cName !== filterCategory) return false;
+      
+      const s = searchTerm.toLowerCase();
+      if (s && !cName.toLowerCase().includes(s) && !(cleanText(tx.note).toLowerCase().includes(s))) return false;
+      
+      return true;
+    });
+  }, [transactions, filterType, filterCategory, searchTerm]);
+
+  const totalAmount = filtered.reduce((sum, tx) => sum + parseFloat(tx.amount || 0), 0);
+
+  return (
+    <div className="space-y-6 animate-in slide-in-from-right-4 duration-300 relative z-0">
+      <div className="bg-white/[0.02] rounded-3xl border border-white/[0.05] p-5 shadow-2xl space-y-4">
+        <div className="relative">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+          <input 
+            type="text" placeholder="Search period history..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full bg-black/20 border border-white/5 rounded-xl py-3 pl-11 pr-4 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500/50 transition-colors"
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="bg-black/20 text-slate-300 text-xs font-medium rounded-xl px-3 py-3 border border-white/5 outline-none focus:border-emerald-500/50 appearance-none cursor-pointer">
+            <option value="All" className="bg-slate-900">All Types</option>
+            <option value="Expense" className="bg-slate-900">Expenses</option>
+            <option value="Income" className="bg-slate-900">Income</option>
+            <option value="Savings" className="bg-slate-900">Savings</option>
+          </select>
+
+          <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} className="bg-black/20 text-slate-300 text-xs font-medium rounded-xl px-3 py-3 border border-white/5 outline-none focus:border-emerald-500/50 appearance-none cursor-pointer">
+            <option value="All" className="bg-slate-900">All Categories</option>
+            {availableCategories.map(c => <option key={c} value={c} className="bg-slate-900">{c}</option>)}
+          </select>
+        </div>
+
+        <div className="pt-4 border-t border-white/5 flex items-center justify-between">
+           <span className="text-xs text-slate-400 font-medium uppercase tracking-wider">Filtered Total</span>
+           <span className="text-lg font-bold text-white tracking-tight">{formatCurrency(totalAmount)}</span>
+        </div>
+      </div>
+
+      <div className="bg-white/[0.02] rounded-3xl border border-white/[0.05] overflow-hidden shadow-2xl">
+        {filtered.map((tx, i) => (
+          <div key={tx.id} className="group relative z-0">
+            <TxRow tx={tx} isLast={i === filtered.length - 1} onClick={() => onEdit(tx)} />
+            <div className="absolute right-4 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
+               <button onClick={(e) => { e.stopPropagation(); onDelete(tx.id); }} className="p-2.5 bg-rose-500/20 text-rose-400 rounded-xl hover:bg-rose-500/40 backdrop-blur-md">
+                 <Trash2 size={16} />
+               </button>
+            </div>
+          </div>
+        ))}
+        {filtered.length === 0 && (
+          <div className="p-10 text-center flex flex-col items-center justify-center gap-3">
+            <Receipt size={32} className="text-slate-700" />
+            <span className="text-sm text-slate-500">No records found.</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Analytics({ transactions, viewMode, viewDate, customDateRange, metrics }) {
+  const [aiAdvice, setAiAdvice] = useState(null);
+  const [isGeneratingAdvice, setIsGeneratingAdvice] = useState(false);
+
+  const chartData = useMemo(() => {
+    let start, end, format;
+    if (viewMode === 'month') {
+      start = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1); end = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0); format = 'day';
+    } else if (viewMode === 'year') {
+      start = new Date(viewDate.getFullYear(), 0, 1); end = new Date(viewDate.getFullYear(), 11, 31); format = 'month';
+    } else if (viewMode === 'custom') {
+      start = new Date(customDateRange.start); start.setHours(0,0,0,0); end = new Date(customDateRange.end); end.setHours(23,59,59,999);
+      format = ((end - start) / (1000 * 60 * 60 * 24)) > 60 ? 'month' : 'day';
+    } else {
+      if (transactions.length === 0) return [];
+      const times = transactions.map(t => parseDate(t.date).getTime());
+      start = new Date(Math.min(...times)); end = new Date(Math.max(...times)); format = 'year';
+    }
+
+    const aggregates = {};
+    if (format === 'day') {
+       for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) 
+          aggregates[`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`] = { amount: 0, label: d.getDate().toString(), tooltip: d.toLocaleString('default', { day: 'numeric', month: 'short' }), order: d.getTime() };
+    } else if (format === 'month') {
+       for (let current = new Date(start.getFullYear(), start.getMonth(), 1); current <= new Date(end.getFullYear(), end.getMonth(), 1); current.setMonth(current.getMonth() + 1))
+          aggregates[`${current.getFullYear()}-${current.getMonth()}`] = { amount: 0, label: current.toLocaleString('default', { month: 'short' }), tooltip: current.toLocaleString('default', { month: 'short', year: 'numeric' }), order: current.getFullYear() * 100 + current.getMonth() };
+    } else if (format === 'year') {
+       for (let y = start.getFullYear(); y <= end.getFullYear(); y++) 
+          aggregates[y.toString()] = { amount: 0, label: y.toString(), tooltip: y.toString(), order: y };
+    }
+
+    transactions.forEach(tx => {
+      if (tx.type !== 'Expense' || cleanText(tx.category).toLowerCase().includes('saving')) return;
+      const d = parseDate(tx.date);
+      let key = format === 'day' ? `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}` : format === 'month' ? `${d.getFullYear()}-${d.getMonth()}` : d.getFullYear().toString();
+      if (aggregates[key]) aggregates[key].amount += tx.amount;
+    });
+
+    const results = Object.values(aggregates).sort((a,b) => a.order - b.order);
+    if (results.length === 0) return [];
+    const max = Math.max(...results.map(r => r.amount), 1);
+    return results.map(r => ({ ...r, height: (r.amount / max) * 100 }));
+  }, [transactions, viewMode, viewDate, customDateRange]);
+
+  const handleGetAdvice = async () => {
+    // This feature requires a Gemini API Key to work.
+    setAiAdvice("To use AI insights, please add your Gemini API Key in the code.");
+  };
+
+  const totalFlow = metrics.periodIncome + metrics.periodExpense + metrics.periodSavings;
+  const iPct = totalFlow > 0 ? (metrics.periodIncome / totalFlow) * 100 : 0;
+  const sPct = totalFlow > 0 ? (metrics.periodSavings / totalFlow) * 100 : 0;
+  const ePct = totalFlow > 0 ? (metrics.periodExpense / totalFlow) * 100 : 0;
+
+  return (
+    <div className="space-y-6 animate-in slide-in-from-right-4 duration-300 relative z-0">
+      <div className="bg-white/[0.02] rounded-3xl border border-white/[0.05] p-6 shadow-2xl">
+        <h3 className="text-[13px] font-bold text-slate-400 uppercase tracking-widest mb-6">Cash Flow Insights</h3>
+        <div className="flex justify-between items-end mb-3">
+           <div><p className="text-[10px] uppercase text-emerald-500/70 font-bold tracking-wider mb-1">In</p><p className="text-sm font-bold text-emerald-400">{formatCurrency(metrics.periodIncome)}</p></div>
+           <div className="text-center"><p className="text-[10px] uppercase text-blue-500/70 font-bold tracking-wider mb-1">Saved</p><p className="text-sm font-bold text-blue-400">{formatCurrency(metrics.periodSavings)}</p></div>
+           <div className="text-right"><p className="text-[10px] uppercase text-rose-500/70 font-bold tracking-wider mb-1">Out</p><p className="text-sm font-bold text-rose-400">{formatCurrency(metrics.periodExpense)}</p></div>
+        </div>
+        <div className="h-2 w-full bg-white/[0.05] rounded-full overflow-hidden flex shadow-inner">
+           <div className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-1000" style={{ width: `${iPct}%` }}></div>
+           <div className="h-full bg-gradient-to-r from-blue-500 to-indigo-400 transition-all duration-1000" style={{ width: `${sPct}%` }}></div>
+           <div className="h-full bg-gradient-to-r from-rose-500 to-pink-500 transition-all duration-1000" style={{ width: `${ePct}%` }}></div>
+        </div>
+      </div>
+
+      <div className="bg-gradient-to-br from-indigo-900/30 to-transparent border border-indigo-500/20 rounded-3xl p-6 shadow-2xl relative overflow-hidden">
+        <div className="flex justify-between items-start mb-4 relative z-10">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 flex items-center justify-center border border-indigo-500/30 shadow-[0_0_15px_rgba(99,102,241,0.2)]">
+               <Bot size={20} className="text-indigo-400" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-white tracking-wide">AI Assistant</h3>
+              <p className="text-[10px] text-indigo-300 uppercase tracking-widest">Smart Insight</p>
+            </div>
+          </div>
+          {!aiAdvice && !isGeneratingAdvice && (
+            <button onClick={handleGetAdvice} className="px-4 py-2 bg-indigo-500 hover:bg-indigo-400 text-white text-[11px] font-bold rounded-xl shadow-[0_0_20px_rgba(99,102,241,0.4)] transition-all flex items-center gap-1.5"><Sparkles size={14} /> Analyze</button>
+          )}
+        </div>
+        {isGeneratingAdvice && <div className="flex items-center gap-2 text-indigo-300 text-xs py-4 animate-pulse"><Sparkles size={14} className="animate-spin" /> Thinking...</div>}
+        {aiAdvice && !isGeneratingAdvice && (
+          <div className="text-xs text-slate-300 leading-relaxed bg-black/30 p-4 rounded-2xl border border-white/5 backdrop-blur-md">
+            <div dangerouslySetInnerHTML={{ __html: aiAdvice }} className="space-y-2" />
+            <button onClick={handleGetAdvice} className="mt-4 text-[10px] uppercase tracking-wider font-bold text-indigo-400 hover:text-indigo-300 flex items-center gap-1"><Sparkles size={12} /> Refresh</button>
+          </div>
+        )}
+      </div>
+      
+      <div className="bg-white/[0.02] rounded-3xl border border-white/[0.05] p-6 shadow-2xl">
+        <h3 className="text-[13px] font-bold text-slate-400 uppercase tracking-widest mb-6">Spending Trend</h3>
+        {chartData.length > 0 ? (
+          <div className="flex items-end h-40 mt-4 gap-[3px] overflow-x-auto pb-4 custom-scrollbar">
+            {chartData.map((dataPoint, i) => (
+              <div key={i} className={`flex flex-col items-center shrink-0 group ${chartData.length > 15 ? 'w-5' : 'flex-1'}`}>
+                <div className="relative w-full flex justify-center h-full items-end pb-2">
+                  <div className="absolute -top-12 opacity-0 group-hover:opacity-100 transition-opacity bg-[#1e293b] border border-white/10 text-xs text-white px-2.5 py-1.5 rounded-lg shadow-2xl whitespace-nowrap z-10 pointer-events-none flex flex-col items-center">
+                    <span className="font-bold">{formatCurrency(dataPoint.amount)}</span>
+                    <span className="text-[9px] text-slate-400">{dataPoint.tooltip}</span>
+                  </div>
+                  <div 
+                    className={`w-full max-w-[16px] rounded-[3px] transition-all duration-500 ease-out ${dataPoint.amount > 0 ? 'bg-gradient-to-t from-rose-600 to-rose-400 shadow-[0_0_10px_rgba(244,63,94,0.4)]' : 'bg-white/[0.03]'}`} 
+                    style={{ height: dataPoint.amount > 0 ? `${Math.max(dataPoint.height, 8)}%` : '6px' }}
+                  ></div>
+                </div>
+                <span className={`text-[8px] mt-2 text-center whitespace-nowrap truncate w-full font-medium ${dataPoint.amount > 0 ? 'text-slate-300' : 'text-slate-600'}`}>{dataPoint.label}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="h-40 flex items-center justify-center text-slate-600 text-xs font-medium">Add records to view graph.</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SettingsView({ sheetUrl, onSaveSheetUrl, onManualSync, isSyncing, onUpload, onExport }) {
+  const [localUrl, setLocalUrl] = useState(sheetUrl || '');
+
+  return (
+    <div className="space-y-6 animate-in slide-in-from-right-4 duration-300 relative z-0">
+      
+      {/* GOOGLE SHEET SYNC SECTION */}
+      <div className="bg-gradient-to-br from-emerald-900/20 to-transparent border border-emerald-500/20 rounded-3xl overflow-hidden shadow-2xl relative">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none"></div>
+        <div className="p-5 border-b border-emerald-500/10">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center text-emerald-400">
+              <Database size={20} />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-white tracking-wide">Google Sheet Sync</h3>
+              <p className="text-[10px] text-emerald-400/70 uppercase tracking-widest font-medium">Auto Backup Active</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="text-[11px] font-bold text-slate-400 mb-2 block uppercase tracking-wider">Web App URL</label>
+            <div className="flex gap-2">
+              <input 
+                type="text" 
+                value={localUrl}
+                onChange={(e) => setLocalUrl(e.target.value)}
+                placeholder="Paste Google Apps Script URL here..." 
+                className="flex-1 bg-black/30 border border-emerald-500/20 rounded-xl py-3 px-4 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500/50"
+              />
+              <button 
+                onClick={() => onSaveSheetUrl(localUrl)}
+                className="bg-emerald-500 hover:bg-emerald-400 text-white px-4 rounded-xl font-bold text-xs transition-colors flex items-center gap-1.5 shadow-[0_0_15px_rgba(16,185,129,0.2)]"
+              >
+                <Save size={14} /> Save
+              </button>
+            </div>
+          </div>
+
+          <div className="pt-2">
+            <button 
+              onClick={onManualSync}
+              disabled={isSyncing || !sheetUrl}
+              className={`w-full flex items-center justify-center gap-2 p-4 rounded-2xl border transition-all ${sheetUrl ? 'bg-white/5 hover:bg-emerald-500/10 border-white/10 hover:border-emerald-500/30 cursor-pointer' : 'bg-black/20 border-white/5 opacity-50 cursor-not-allowed'}`}
+            >
+              {isSyncing ? <RefreshCw size={20} className="text-emerald-400 animate-spin" /> : <Cloud size={20} className="text-emerald-400" />}
+              <span className="text-[13px] font-bold text-white">Force Backup to Sheet</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white/[0.02] rounded-3xl border border-white/[0.05] overflow-hidden shadow-2xl">
+        <div className="p-2">
+          <label className="flex items-center justify-between w-full p-4 hover:bg-white/[0.04] rounded-2xl cursor-pointer transition-colors group">
+            <div className="flex items-center gap-4">
+              <div className="w-10 h-10 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-400 group-hover:bg-indigo-500/20 transition-colors border border-indigo-500/20"><Upload size={18} /></div>
+              <div className="text-left">
+                <p className="text-sm font-bold text-white tracking-wide">Import Local File</p>
+                <p className="text-[11px] text-slate-500 font-medium">Upload from Excel/CSV</p>
+              </div>
+            </div>
+            <ChevronRight size={18} className="text-slate-600 group-hover:text-white transition-colors" />
+            <input type="file" accept=".csv, .xlsx, .xls" className="hidden" onChange={onUpload} />
+          </label>
+
+          <button onClick={onExport} className="flex items-center justify-between w-full p-4 hover:bg-white/[0.04] rounded-2xl cursor-pointer transition-colors group mt-1">
+            <div className="flex items-center gap-4">
+              <div className="w-10 h-10 rounded-xl bg-slate-500/10 flex items-center justify-center text-slate-400 group-hover:bg-slate-500/20 transition-colors border border-slate-500/20"><Download size={18} /></div>
+              <div className="text-left">
+                <p className="text-sm font-bold text-white tracking-wide">Export to Phone</p>
+                <p className="text-[11px] text-slate-500 font-medium">Download everything as CSV</p>
+              </div>
+            </div>
+            <ChevronRight size={18} className="text-slate-600 group-hover:text-white transition-colors" />
+          </button>
+        </div>
+      </div>
+      <div className="px-6 py-4 bg-emerald-500/5 border border-emerald-500/10 rounded-3xl text-center">
+        <p className="text-[11px] text-emerald-400/80 font-medium leading-relaxed">
+          This app runs 100% offline. Adding a Google Sheet URL will automatically back up every entry to the cloud.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function NavButton({ icon, label, isActive, onClick }) {
+  return (
+    <button onClick={onClick} className={`flex flex-col items-center justify-center w-16 gap-1.5 transition-all duration-300 ${isActive ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'}`}>
+      <div className={`transition-all duration-300 ${isActive ? '-translate-y-1.5 drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]' : ''}`}>{icon}</div>
+      <span className={`text-[9px] font-bold uppercase tracking-wider transition-all duration-300 ${isActive ? 'opacity-100' : 'opacity-0 translate-y-2'}`}>{label}</span>
+    </button>
+  );
+}
+
+function TxRow({ tx, isLast, onClick }) {
+  const isInc = tx.type === 'Income';
+  const Icon = isInc ? ArrowDownRight : ArrowUpRight;
+  const colorClass = isInc ? 'text-emerald-400 bg-emerald-400/10 border-emerald-500/20' : 'text-rose-400 bg-rose-500/10 border-rose-500/20';
+
+  return (
+    <div onClick={onClick} className={`flex items-center justify-between p-4 cursor-pointer hover:bg-white/[0.04] transition-colors ${!isLast ? 'border-b border-white/[0.05]' : ''}`}>
+      <div className="flex items-center gap-4">
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border ${colorClass}`}><Icon size={18} strokeWidth={2.5} /></div>
+        <div className="overflow-hidden">
+          <p className="text-[14px] font-bold text-white truncate tracking-wide">{cleanText(tx.category) || cleanText(tx.note) || 'Other'}</p>
+          <p className="text-[11px] text-slate-500 truncate mt-0.5 font-medium">{new Date(tx.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })} • {cleanText(tx.note) || tx.type}</p>
+        </div>
+      </div>
+      <div className="text-right shrink-0 ml-4">
+        <p className={`text-[15px] font-bold tracking-tight ${isInc ? 'text-emerald-400' : 'text-white'}`}>{isInc ? '+' : '-'}{formatCurrency(tx.amount)}</p>
+      </div>
+    </div>
+  );
+}
+
+function TransactionModal({ tx, transactions, onClose, onSave }) {
+  const [type, setType] = useState(tx?.type || 'Expense');
+  const [amount, setAmount] = useState(tx?.amount || '');
+  const [category, setCategory] = useState(tx ? cleanText(tx.category) : '');
+  const [note, setNote] = useState(tx ? cleanText(tx.note) : '');
+  const [date, setDate] = useState(tx?.date ? tx.date.split('T')[0] : new Date().toISOString().split('T')[0]);
+
+  const dynamicCategories = useMemo(() => {
+    const cats = new Set();
+    if (transactions) {
+      transactions.forEach(t => {
+        if (t.type === type && t.category) {
+          const cleaned = cleanText(t.category);
+          if (cleaned && cleaned !== 'Other') cats.add(cleaned);
+        }
+      });
+    }
+    if (cats.size === 0) {
+       if (type === 'Expense') ['Food', 'Travel', 'Rent', 'Medical', 'Shopping'].forEach(c => cats.add(c));
+       if (type === 'Income') ['Salary', 'Business', 'Investment', 'Gift'].forEach(c => cats.add(c));
+    }
+    return Array.from(cats).sort();
+  }, [transactions, type]);
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!amount || !category) return;
+    onSave({ 
+      id: tx?.id, 
+      type, 
+      amount, 
+      category: cleanText(category) || 'Other', 
+      note: cleanText(note), 
+      date: new Date(date).toISOString() 
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-end justify-center sm:items-center p-4 pb-0 sm:pb-4 pointer-events-none">
+      <div className="absolute inset-0 bg-[#05080f]/80 backdrop-blur-md pointer-events-auto transition-opacity" onClick={onClose}></div>
+      <div className="w-full max-w-md bg-[#0f1420] rounded-t-[2rem] sm:rounded-3xl border border-white/10 shadow-[0_-20px_60px_rgba(0,0,0,0.6)] relative pointer-events-auto animate-in slide-in-from-bottom-full sm:zoom-in-95 duration-300 max-h-[90vh] overflow-y-auto">
+        <div className="flex justify-between items-center p-6 border-b border-white/5">
+          <h3 className="text-lg font-bold text-white tracking-tight">{tx ? 'Edit Record' : 'New Record'}</h3>
+          <button type="button" onClick={onClose} className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors"><X size={18} /></button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+          <div className="flex p-1.5 bg-black/40 rounded-xl border border-white/5">
+            {['Expense', 'Income'].map((t) => (
+              <button key={t} type="button" onClick={() => { setType(t); setCategory(''); }} className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all ${type === t ? (t === 'Income' ? 'bg-emerald-500 text-white shadow-[0_4px_15px_rgba(16,185,129,0.3)]' : 'bg-rose-500 text-white shadow-[0_4px_15px_rgba(244,63,94,0.3)]') : 'text-slate-500 hover:text-white'}`}>{t}</button>
+            ))}
+          </div>
+
+          <div>
+            <label className="text-[10px] uppercase font-bold tracking-widest text-slate-500 block mb-2">Amount (INR)</label>
+            <div className="relative">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-lg">?</span>
+              <input type="number" required value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" step="0.01" className="w-full bg-black/20 border border-white/5 rounded-xl py-3.5 pl-9 pr-4 text-white text-xl font-bold tracking-tight focus:outline-none focus:border-emerald-500/50 transition-colors placeholder-slate-800" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+             <div>
+              <label className="text-[10px] uppercase font-bold tracking-widest text-slate-500 block mb-2">Date</label>
+              <input type="date" required value={date} onChange={(e) => setDate(e.target.value)} className="w-full bg-black/20 border border-white/5 rounded-xl p-3.5 text-white text-sm focus:outline-none focus:border-emerald-500/50 transition-colors style-color-scheme-dark font-medium" />
+            </div>
+            <div>
+              <label className="text-[10px] uppercase font-bold tracking-widest text-slate-500 block mb-2">Category</label>
+              
+              <input 
+                type="text" 
+                required 
+                value={category} 
+                onChange={(e) => setCategory(e.target.value)} 
+                placeholder={type === 'Expense' ? "e.g. Food, Salary" : "e.g. Salary, Gift"} 
+                list="dynamic-categories" 
+                className="w-full bg-black/20 border border-white/5 rounded-xl p-3.5 text-white text-sm focus:outline-none focus:border-emerald-500/50 transition-colors font-medium placeholder-slate-700" 
+              />
+              <datalist id="dynamic-categories">
+                {dynamicCategories.map(c => <option key={c} value={c} />)}
+              </datalist>
+
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[10px] uppercase font-bold tracking-widest text-slate-500 block mb-2">Note (Optional)</label>
+            <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="What was this for?" className="w-full bg-black/20 border border-white/5 rounded-xl p-3.5 text-white text-sm focus:outline-none focus:border-emerald-500/50 transition-colors font-medium placeholder-slate-700" />
+          </div>
+
+          <button type="submit" className="w-full py-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-bold tracking-wide shadow-[0_10px_30px_rgba(16,185,129,0.3)] hover:scale-[1.02] active:scale-[0.98] transition-all mt-6">Save Record</button>
+        </form>
+      </div>
+    </div>
+  );
+}
