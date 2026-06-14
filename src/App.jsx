@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { createRoot } from 'react-dom/client';
 import { 
   Home, PieChart as PieChartIcon, List, Settings, Plus, 
   Upload, Download, Trash2, AlertCircle, CheckCircle2, Search, X, 
