@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { createRoot } from 'react-dom/client';
 import { 
   Home, PieChart as PieChartIcon, List, Settings, Plus, 
   Upload, Download, Trash2, AlertCircle, CheckCircle2, Search, X, 
@@ -7,7 +8,7 @@ import {
 } from 'lucide-react';
 
 // ==========================================
-// ?? DEFAULT GOOGLE SHEET LINK YAHAN DALEIN ??
+// 🔴 DEFAULT GOOGLE SHEET LINK YAHAN DALEIN 🔴
 // ==========================================
 const DEFAULT_SHEET_URL = "https://script.google.com/macros/s/AKfycbzB6cmNT9vvDR3BoIYJXKMmaUEF0V2zDBCw70wnmqg-3idRa0Y4vqEaJgl_VnNmvWtl2A/exec"; 
 // Example: "https://script.google.com/macros/s/AKfycbz.../exec"
@@ -963,7 +964,7 @@ function TxRow({ tx, isLast, onClick }) {
         <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border ${colorClass}`}><Icon size={18} strokeWidth={2.5} /></div>
         <div className="overflow-hidden">
           <p className="text-[14px] font-bold text-white truncate tracking-wide">{cleanText(tx.category) || cleanText(tx.note) || 'Other'}</p>
-          <p className="text-[11px] text-slate-500 truncate mt-0.5 font-medium">{new Date(tx.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}  {cleanText(tx.note) || tx.type}</p>
+          <p className="text-[11px] text-slate-500 truncate mt-0.5 font-medium">{new Date(tx.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })} • {cleanText(tx.note) || tx.type}</p>
         </div>
       </div>
       <div className="text-right shrink-0 ml-4">
@@ -1029,7 +1030,7 @@ function TransactionModal({ tx, transactions, onClose, onSave }) {
           <div>
             <label className="text-[10px] uppercase font-bold tracking-widest text-slate-500 block mb-2">Amount (INR)</label>
             <div className="relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-lg">?</span>
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-lg">₹</span>
               <input type="number" required value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" step="0.01" className="w-full bg-black/20 border border-white/5 rounded-xl py-3.5 pl-9 pr-4 text-white text-xl font-bold tracking-tight focus:outline-none focus:border-emerald-500/50 transition-colors placeholder-slate-800" />
             </div>
           </div>
