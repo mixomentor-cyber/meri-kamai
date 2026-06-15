@@ -7,13 +7,6 @@ import {
   IndianRupee, User
 } from 'lucide-react';
 
-// ==========================================
-// 🔴 DEFAULT GOOGLE SHEET LINK YAHAN DALEIN 🔴
-// ==========================================
-const DEFAULT_SHEET_URL = "https://script.google.com/macros/s/AKfycbzB6cmNT9vvDR3BoIYJXKMmaUEF0V2zDBCw70wnmqg-3idRa0Y4vqEaJgl_VnNmvWtl2A/exec"; 
-// Example: "https://script.google.com/macros/s/AKfycbz.../exec"
-// ==========================================
-
 // --- UTILS ---
 const formatCurrency = (amount) => {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
@@ -119,10 +112,17 @@ function PeriodSelector({ viewMode, setViewMode, viewDate, setViewDate, customDa
 
 // --- MAIN APP COMPONENT ---
 export default function App() {
-  const [transactions, setTransactions] = useState([]);
+  const [transactions, setTransactions] = useState(() => {
+    try {
+      const saved = localStorage.getItem('fintrack_local_tx');
+      return saved ? JSON.parse(saved) : [];
+    } catch(e) { return []; }
+  });
+  
+  const [sheetUrl, setSheetUrl] = useState(() => localStorage.getItem('fintrack_sheet_url') || "");
+  
   const [activeTab, setActiveTab] = useState('home');
   const [toast, setToast] = useState(null);
-  const [sheetUrl, setSheetUrl] = useState('');
   
   const [viewMode, setViewMode] = useState('month'); 
   const [viewDate, setViewDate] = useState(new Date());
@@ -133,50 +133,72 @@ export default function App() {
 
   const [isTxModalOpen, setIsTxModalOpen] = useState(false);
   const [editingTx, setEditingTx] = useState(null);
-  
   const [isSyncing, setIsSyncing] = useState(false);
   const [isAppLoading, setIsAppLoading] = useState(true);
 
   const showToast = (message, type = 'success') => setToast({ message, type });
 
   // PULL DATA FROM GOOGLE SHEET
-  const syncFromSheet = async (urlToUse) => {
+  const syncFromSheet = async (urlToUse, isBackgroundLoad = false) => {
     if (!urlToUse) return;
+    if (!urlToUse.startsWith('http')) {
+      if (!isBackgroundLoad) showToast("Invalid URL format.", "error");
+      return;
+    }
+    
     setIsSyncing(true);
     try {
       const response = await fetch(`${urlToUse}?action=restore`);
-      const result = await response.json();
+      const text = await response.text(); 
+      if (text.includes("<!DOCTYPE html>") || text.includes("<html")) {
+         throw new Error("Access Denied");
+      }
+      const result = JSON.parse(text);
       if (result && result.status === 'success' && Array.isArray(result.data)) {
-        setTransactions(result.data);
-        localStorage.setItem('fintrack_local_tx', JSON.stringify(result.data));
+        
+        const localData = JSON.parse(localStorage.getItem('fintrack_local_tx') || '[]');
+
+        if (result.data.length === 0 && localData.length > 0) {
+           if (!isBackgroundLoad) showToast("Syncing local data to new Sheet...");
+           fetch(urlToUse, {
+              method: 'POST',
+              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+              body: JSON.stringify({ action: 'backup', data: localData })
+           }).catch(()=>{});
+        } else {
+           setTransactions(result.data);
+           localStorage.setItem('fintrack_local_tx', JSON.stringify(result.data)); 
+           if(!isBackgroundLoad) {
+             if(result.data.length > 0) {
+               showToast("Data Auto-Restored from Sheet!", "success");
+             } else {
+               showToast("Connected! Sheet is empty.", "success");
+             }
+           }
+        }
+      } else {
+        throw new Error("Format Error");
       }
     } catch (err) {
-      console.error("Auto-fetch error", err);
+      if (!isBackgroundLoad) {
+        if (err.message === "Access Denied" || err.message === "Failed to fetch" || err.message.includes("fetch") || err.name === "TypeError") {
+           showToast("Sync failed: Check URL or set access to 'Anyone'!", "error");
+        } else {
+           showToast("Sync failed. Check Sheet URL.", "error");
+        }
+      }
     } finally {
       setIsSyncing(false);
     }
   };
 
-  // AUTO-RESTORE Data on App Start
+  // INSTANT AUTO-RESTORE on App Start
   useEffect(() => {
-    const initApp = async () => {
-      // 1. Fast Load from Local Storage
-      const savedTx = localStorage.getItem('fintrack_local_tx');
-      if (savedTx) {
-        try { setTransactions(JSON.parse(savedTx)); } catch(e){}
-      }
-      
-      const currentUrl = localStorage.getItem('fintrack_sheet_url') || DEFAULT_SHEET_URL;
-      setSheetUrl(currentUrl);
-
-      // 2. Auto-Restore from Google Sheet in background
-      if (currentUrl) {
-        await syncFromSheet(currentUrl);
-      }
-      setIsAppLoading(false);
-    };
-
-    initApp();
+    setIsAppLoading(false);
+    const currentUrl = localStorage.getItem('fintrack_sheet_url');
+    if (currentUrl) {
+      syncFromSheet(currentUrl, true);
+    }
   }, []);
 
   const periodTransactions = useMemo(() => {
@@ -231,7 +253,6 @@ export default function App() {
     };
   }, [periodTransactions]);
 
-  // --- AUTO BACKUP ON SAVE ---
   const handleSaveTransaction = (data) => {
     const txId = data.id || Date.now().toString();
     const payload = { ...data, id: txId, amount: parseFloat(data.amount) };
@@ -245,16 +266,25 @@ export default function App() {
       return finalData;
     });
     
-    // Background Auto-Sync to Google Sheet
-    if (sheetUrl) {
+    if (sheetUrl && sheetUrl.startsWith('http')) {
       setIsSyncing(true);
       fetch(sheetUrl, { 
         method: 'POST', 
         headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
         body: JSON.stringify({ action: 'backup', data: finalData }) 
       })
-      .then(() => showToast("Auto-Saved to Sheet!"))
-      .catch(() => showToast("Auto-save failed.", "error"))
+      .then(async (res) => {
+         const text = await res.text();
+         if(text.includes("<html")) throw new Error("Access Denied");
+         showToast("Auto-Saved to Sheet!");
+      })
+      .catch((err) => {
+         if (err.message === "Access Denied" || err.message === "Failed to fetch" || err.message.includes("fetch") || err.name === "TypeError") {
+            showToast("Auto-save failed: URL wrong or missing 'Anyone' access!", "error");
+         } else {
+            showToast("Auto-save failed.", "error");
+         }
+      })
       .finally(() => setIsSyncing(false));
     } else {
       showToast(data.id ? "Updated Locally" : "Saved Locally");
@@ -264,7 +294,6 @@ export default function App() {
     setEditingTx(null);
   };
 
-  // --- AUTO BACKUP ON DELETE ---
   const handleDelete = (id) => {
     let finalData = [];
     setTransactions(prev => {
@@ -273,43 +302,67 @@ export default function App() {
       return finalData;
     });
     
-    // Background Auto-Sync
-    if (sheetUrl) {
+    if (sheetUrl && sheetUrl.startsWith('http')) {
       setIsSyncing(true);
       fetch(sheetUrl, { 
         method: 'POST', 
         headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
         body: JSON.stringify({ action: 'backup', data: finalData }) 
       })
-      .then(() => showToast("Deleted from Sheet!"))
-      .catch(() => showToast("Auto-delete failed.", "error"))
+      .then(async (res) => {
+         const text = await res.text();
+         if(text.includes("<html")) throw new Error("Access Denied");
+         showToast("Deleted from Sheet!");
+      })
+      .catch((err) => {
+         if (err.message === "Access Denied" || err.message === "Failed to fetch" || err.message.includes("fetch") || err.name === "TypeError") {
+            showToast("Auto-delete failed: URL wrong or missing 'Anyone' access!", "error");
+         } else {
+            showToast("Auto-delete failed.", "error");
+         }
+      })
       .finally(() => setIsSyncing(false));
     } else {
       showToast("Deleted Locally");
     }
   };
 
-  // --- SAVE LINK & TRIGGER INSTANT AUTO-RESTORE ---
   const saveSheetUrl = async (url) => {
-    if(!url) return showToast("Please enter a valid URL", "error");
+    if(!url) {
+       setSheetUrl("");
+       localStorage.removeItem('fintrack_sheet_url');
+       return showToast("Link Removed! App is running offline.");
+    }
+    if(!url.startsWith('http')) {
+       return showToast("Invalid URL format.", "error");
+    }
     setSheetUrl(url);
     localStorage.setItem('fintrack_sheet_url', url);
     showToast("Link Saved! Fetching data...");
-    await syncFromSheet(url); 
+    await syncFromSheet(url, false); 
   };
 
   const handleManualSync = async () => {
     if (!sheetUrl) return showToast("Sheet URL is missing.", "error");
+    if (!sheetUrl.startsWith('http')) return showToast("Invalid URL format.", "error");
+    
     setIsSyncing(true);
     try {
-      await fetch(sheetUrl, {
+      const response = await fetch(sheetUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ action: 'backup', data: transactions })
       });
+      const text = await response.text();
+      if (text.includes("<!DOCTYPE html>") || text.includes("<html")) throw new Error("Access Denied");
+      
       showToast("Force Synced to Google Sheet!");
     } catch (err) {
-      showToast("Sync failed.", "error");
+      if (err.message === "Access Denied" || err.message === "Failed to fetch" || err.message.includes("fetch") || err.name === "TypeError") {
+         showToast("Sync failed: Check URL or set access to 'Anyone'!", "error");
+      } else {
+         showToast("Sync failed.", "error");
+      }
     } finally {
       setIsSyncing(false);
     }
@@ -379,7 +432,7 @@ export default function App() {
            return finalData;
         });
 
-        if (sheetUrl) {
+        if (sheetUrl && sheetUrl.startsWith('http')) {
           setIsSyncing(true);
           showToast(`Imported ${newDocs.length} records. Uploading to Sheet...`);
           fetch(sheetUrl, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'backup', data: finalData }) })
@@ -417,13 +470,11 @@ export default function App() {
 
       <header className="px-6 pt-12 pb-4 bg-black/10 backdrop-blur-2xl border-b border-white/[0.05] sticky top-0 z-10 flex justify-between items-center">
         <div className="flex items-center gap-3">
-          {/* Beautiful Golden Icon */}
           <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center shadow-[0_0_20px_rgba(245,158,11,0.3)] border border-amber-300/30">
             <IndianRupee size={22} className="text-white drop-shadow-md" strokeWidth={2.5} />
           </div>
           <div>
             <h1 className="text-xl font-bold bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent leading-none tracking-tight">Meri Kamai</h1>
-            {/* Rahul Saini Name Section */}
             <p className="text-[10px] font-bold text-amber-400 mt-1 uppercase tracking-widest flex items-center gap-1.5">
                <User size={12} className="text-amber-500/80" /> RAHUL SAINI
             </p>
@@ -563,13 +614,20 @@ function BreakdownSection({ title, categories, transactions, colors, txFilter, v
 function Dashboard({ metrics, transactions, viewMode, viewDate, customDateRange }) {
   const periodLabel = viewMode === 'all' ? 'All Time' : viewMode === 'year' ? viewDate.getFullYear() : viewMode === 'custom' ? 'Range' : viewDate.toLocaleString('default', { month: 'long', year: 'numeric' });
 
+  // Calculate Percentages dynamically
+  const outPct = metrics.periodIncome > 0 ? Math.round((metrics.periodExpense / metrics.periodIncome) * 100) : 0;
+  const savePct = metrics.periodIncome > 0 ? Math.round((metrics.periodSavings / metrics.periodIncome) * 100) : 0;
+  const balPct = metrics.periodIncome > 0 ? Math.round((metrics.balance / metrics.periodIncome) * 100) : 0;
+
   return (
     <div className="space-y-8 animate-in fade-in duration-500 relative z-0">
       <div className="relative rounded-[2rem] overflow-hidden bg-gradient-to-br from-[#1a2436] to-[#0f1420] border border-white/[0.08] shadow-[0_20px_40px_rgba(0,0,0,0.4)] p-7">
         <div className="absolute top-0 right-0 w-48 h-48 bg-amber-500/10 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"></div>
         
         <div className="relative z-10">
-          <p className="text-slate-400 text-xs font-semibold mb-1 tracking-wider uppercase">Net Balance ({periodLabel})</p>
+          <p className="text-slate-400 text-xs font-semibold mb-1 tracking-wider uppercase">
+            Net Balance ({periodLabel}) {metrics.periodIncome > 0 && <span className="text-amber-400/80 normal-case ml-1 font-bold">({balPct}%)</span>}
+          </p>
           <div className="flex items-baseline gap-2 mb-8">
             <h2 className="text-[2.5rem] font-bold text-white tracking-tight leading-none">
               {formatCurrency(metrics.balance)}
@@ -592,7 +650,9 @@ function Dashboard({ metrics, transactions, viewMode, viewDate, customDateRange 
                 <div className="w-5 h-5 rounded-full bg-rose-500/20 flex items-center justify-center shrink-0">
                   <ArrowUpRight size={12} className="text-rose-400" />
                 </div>
-                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Out</span>
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                  Out {metrics.periodIncome > 0 && <span className="text-rose-400/80 normal-case ml-0.5">({outPct}%)</span>}
+                </span>
               </div>
               <p className="text-sm font-semibold text-white truncate">{formatCurrency(metrics.periodExpense)}</p>
             </div>
@@ -602,7 +662,9 @@ function Dashboard({ metrics, transactions, viewMode, viewDate, customDateRange 
                 <div className="w-5 h-5 rounded-full bg-blue-500/20 flex items-center justify-center shrink-0">
                   <PiggyBank size={12} className="text-blue-400" />
                 </div>
-                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Save</span>
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                  Save {metrics.periodIncome > 0 && <span className="text-blue-400/80 normal-case ml-0.5">({savePct}%)</span>}
+                </span>
               </div>
               <p className="text-sm font-semibold text-white truncate">{formatCurrency(metrics.periodSavings)}</p>
             </div>
@@ -756,7 +818,6 @@ function Analytics({ transactions, viewMode, viewDate, customDateRange, metrics 
     }
 
     transactions.forEach(tx => {
-      // Sirf kharche (Expenses) ko chart me dikhane ke liye
       if (tx.type !== 'Expense' || cleanText(tx.category).toLowerCase().includes('saving')) return;
       const d = parseDate(tx.date);
       let key = format === 'day' ? `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}` : format === 'month' ? `${d.getFullYear()}-${d.getMonth()}` : d.getFullYear().toString();
@@ -774,7 +835,6 @@ function Analytics({ transactions, viewMode, viewDate, customDateRange, metrics 
   const sPct = totalFlow > 0 ? (metrics.periodSavings / totalFlow) * 100 : 0;
   const ePct = totalFlow > 0 ? (metrics.periodExpense / totalFlow) * 100 : 0;
 
-  // Check agar iss mahine koi kharcha hai ya nahi
   const totalExpensesInChart = chartData.reduce((sum, item) => sum + item.amount, 0);
 
   return (
@@ -824,6 +884,10 @@ function Analytics({ transactions, viewMode, viewDate, customDateRange, metrics 
 
 function SettingsView({ sheetUrl, onSaveSheetUrl, onManualSync, isSyncing, onUpload, onExport }) {
   const [localUrl, setLocalUrl] = useState(sheetUrl || '');
+
+  useEffect(() => {
+    setLocalUrl(sheetUrl || '');
+  }, [sheetUrl]);
 
   return (
     <div className="space-y-6 animate-in slide-in-from-right-4 duration-300 relative z-0">
@@ -949,21 +1013,42 @@ function TransactionModal({ tx, transactions, onClose, onSave }) {
   const [date, setDate] = useState(tx?.date ? tx.date.split('T')[0] : new Date().toISOString().split('T')[0]);
 
   const dynamicCategories = useMemo(() => {
-    const cats = new Set();
+    const ObjectOrder = new Set();
     if (transactions) {
       transactions.forEach(t => {
         if (t.type === type && t.category) {
           const cleaned = cleanText(t.category);
-          if (cleaned && cleaned !== 'Other') cats.add(cleaned);
+          if (cleaned && cleaned !== 'Other') ObjectOrder.add(cleaned);
         }
       });
     }
-    if (cats.size === 0) {
-       if (type === 'Expense') ['Food', 'Travel', 'Rent', 'Medical', 'Shopping'].forEach(c => cats.add(c));
-       if (type === 'Income') ['Salary', 'Business', 'Investment', 'Gift'].forEach(c => cats.add(c));
+    if (ObjectOrder.size === 0) {
+       if (type === 'Expense') ['Food', 'Travel', 'Rent', 'Medical', 'Shopping'].forEach(c => ObjectOrder.add(c));
+       if (type === 'Income') ['Salary', 'Business', 'Investment', 'Gift'].forEach(c => ObjectOrder.add(c));
     }
-    return Array.from(cats).sort();
+    return Array.from(ObjectOrder); 
   }, [transactions, type]);
+
+  const pastNotes = useMemo(() => {
+    const notesList = new Set();
+    if (transactions) {
+      transactions.forEach(t => {
+        if (t.type === type && t.note) {
+          const cleaned = cleanText(t.note);
+          if (cleaned) notesList.add(cleaned);
+        }
+      });
+    }
+    return Array.from(notesList);
+  }, [transactions, type]);
+
+  const suggestedNotes = useMemo(() => {
+    if (!note.trim()) return [];
+    const lowerNote = note.toLowerCase();
+    return pastNotes
+      .filter(n => n.toLowerCase().includes(lowerNote) && n.toLowerCase() !== lowerNote)
+      .slice(0, 5); 
+  }, [note, pastNotes]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -990,7 +1075,7 @@ function TransactionModal({ tx, transactions, onClose, onSave }) {
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
           <div className="flex p-1.5 bg-black/40 rounded-xl border border-white/5">
             {['Expense', 'Income'].map((t) => (
-              <button key={t} type="button" onClick={() => { setType(t); setCategory(''); }} className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all ${type === t ? (t === 'Income' ? 'bg-emerald-500 text-white shadow-[0_4px_15px_rgba(16,185,129,0.3)]' : 'bg-rose-500 text-white shadow-[0_4px_15px_rgba(244,63,94,0.3)]') : 'text-slate-500 hover:text-white'}`}>{t}</button>
+              <button key={t} type="button" onClick={() => { setType(t); setCategory(''); setNote(''); }} className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all ${type === t ? (t === 'Income' ? 'bg-emerald-500 text-white shadow-[0_4px_15px_rgba(16,185,129,0.3)]' : 'bg-rose-500 text-white shadow-[0_4px_15px_rgba(244,63,94,0.3)]') : 'text-slate-500 hover:text-white'}`}>{t}</button>
             ))}
           </div>
 
@@ -1028,6 +1113,22 @@ function TransactionModal({ tx, transactions, onClose, onSave }) {
 
           <div>
             <label className="text-[10px] uppercase font-bold tracking-widest text-slate-500 block mb-2">Note (Optional)</label>
+            
+            {suggestedNotes.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-2 animate-in fade-in slide-in-from-bottom-1 duration-200">
+                {suggestedNotes.map(n => (
+                  <button 
+                    key={n} 
+                    type="button" 
+                    onClick={() => setNote(n)}
+                    className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 text-[10px] font-bold px-2.5 py-1.5 rounded-lg shadow-sm transition-colors"
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            )}
+
             <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="What was this for?" className="w-full bg-black/20 border border-white/5 rounded-xl p-3.5 text-white text-sm focus:outline-none focus:border-amber-500/50 transition-colors font-medium placeholder-slate-700" />
           </div>
 
